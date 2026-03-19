@@ -2,135 +2,96 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>モルック練習記録</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas"></script>
 <style>
 body { font-family: sans-serif; text-align: center; margin:0; }
-header { background:#222; color:white; padding:10px; }
-.container { padding:15px; }
+header { background:#222; color:white; padding:8px; font-size:16px; }
+.container { padding:10px; }
+
+.menu-grid {
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:15px;
+}
+
+.menu-btn {
+  aspect-ratio:1/1;
+  border-radius:20px;
+  border:none;
+  font-size:16px;
+}
+
 #grid { display:grid; grid-template-columns:repeat(3,90px); gap:10px; justify-content:center; }
-button { height:90px; font-size:16px; border-radius:12px; border:none; white-space:pre-line; }
-.smallBtn { height:auto; padding:10px; font-size:14px; }
+
+button {
+  height:90px;
+  border-radius:12px;
+  border:none;
+}
+
 .center { transform:scale(1.2); border:3px solid #000; }
+
+.save-anim { background:#4CAF50 !important; color:white; }
+
 .hidden { display:none; }
-#historyLog { max-height:120px; overflow:auto; text-align:left; }
-#analysisHeatmap { display:grid; grid-template-columns:repeat(3,60px); gap:6px; justify-content:center; }
-.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:12px; white-space:pre-line; }
 </style>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#222222">
 </head>
 <body>
 
-<header>
-  <button onclick="showMenu()">☰</button>
-  モルック練習
-</header>
+<header>モルック練習</header>
 
 <div id="menu" class="container">
-  <h2>メニュー</h2>
-
-  <h4>練習時間</h4>
-  <button class="smallBtn" onclick="startPracticeTime()">▶ 開始</button>
-  <button class="smallBtn" onclick="endPracticeTime()">■ 終了</button>
-  <p id="menuTime"></p>
-
-  <hr>
-
-  <button onclick="showSetup()">練習開始</button><br><br>
-  <button onclick="showAnalysis()">分析</button>
+  <h3>メニュー</h3>
+  <div class="menu-grid">
+    <button class="menu-btn" onclick="showSetup()">練習開始</button>
+    <button class="menu-btn" onclick="showAnalysis()">分析</button>
+  </div>
 </div>
 
 <div id="setup" class="container hidden">
-  <input type="number" id="distance" placeholder="距離（m）">
+  <h3>距離選択</h3>
+  <select id="distance"></select>
+  <br><br>
   <button onclick="start()">スタート</button>
 </div>
 
 <div id="game" class="container hidden">
   <h3 id="info"></h3>
-
   <div id="grid"></div>
-
   <p id="accuracy"></p>
   <button onclick="undo()">↩ 戻る</button>
-
-  <h4>履歴</h4>
-  <div id="historyLog"></div>
-
-  <button onclick="saveSession()">保存</button>
-  <button onclick="resetKeepHistory()">リセット</button>
-</div>
-
-<div id="analysis" class="container hidden">
-  <h3>分析ページ</h3>
-
-  <h4>累計練習時間</h4>
-  <p id="totalTime"></p>
-
-  <h4>距離選択</h4>
-  <select id="distanceFilter" onchange="updateAnalysis()"></select>
-
-  <h4>ヒートマップ</h4>
-  <div id="analysisHeatmap"></div>
-
-  <h4>命中率推移</h4>
-  <canvas id="chart"></canvas>
+  <br><br>
+  <button id="saveBtn" onclick="saveSession()">保存</button>
+  <button onclick="downloadImage()">画像保存</button>
 </div>
 
 <script>
 let distance=0, throwCount=1, records=[];
-let startTime=null, endTime=null;
-
 const directions=['↖','↑','↗','←','○','→','↙','↓','↘'];
 
-function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');analysis.classList.add('hidden');}
-function showMenu(){hideAll();menu.classList.remove('hidden');updateMenuTime();}
-function showSetup(){hideAll();setup.classList.remove('hidden');}
-function showAnalysis(){hideAll();analysis.classList.remove('hidden');loadDistanceOptions();drawChart();updateTotalTime();}
+function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');}
+function showSetup(){hideAll();setup.classList.remove('hidden');initDistance();}
+function showAnalysis(){alert('分析は省略');}
 
-// ★メニューで時間管理
-function startPracticeTime(){
-  startTime=new Date();
-  endTime=null;
-  updateMenuTime();
-}
-
-function endPracticeTime(){
-  if(!startTime) return alert('開始していません');
-  endTime=new Date();
-  const duration=(endTime-startTime)/1000/60/60;
-
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  all.push({date:new Date().toLocaleString(),distance,records,duration});
-  localStorage.setItem('sessions',JSON.stringify(all));
-
-  updateMenuTime();
-  alert(`練習時間：${duration.toFixed(2)}時間`);
-}
-
-function updateMenuTime(){
-  if(!startTime) {
-    menuTime.innerText='未開始';
-    return;
-  }
-
-  if(!endTime){
-    const now=new Date();
-    const duration=(now-startTime)/1000/60/60;
-    menuTime.innerText=`実行中：${duration.toFixed(2)}h`;
-  } else {
-    const duration=(endTime-startTime)/1000/60/60;
-    menuTime.innerText=`直近：${duration.toFixed(2)}h`;
+// 距離プルダウン
+function initDistance(){
+  const sel=document.getElementById('distance');
+  sel.innerHTML='';
+  for(let d=3.5; d<=12; d+=0.5){
+    const opt=document.createElement('option');
+    opt.value=d.toFixed(1);
+    opt.text=d.toFixed(1)+' m';
+    sel.appendChild(opt);
   }
 }
 
 function start(){
   distance=document.getElementById('distance').value;
-  if(!distance) return alert('距離入力');
-
   hideAll(); game.classList.remove('hidden');
-  updateGrid(); updateInfo(); updateHistory();
+  updateGrid(); updateInfo();
 }
 
 function updateGrid(){
@@ -155,8 +116,8 @@ function updateGrid(){
   });
 }
 
-function record(r){records.push(r);throwCount++;updateInfo();updateGrid();updateHistory();}
-function undo(){if(records.length===0)return;records.pop();throwCount--;updateInfo();updateGrid();updateHistory();}
+function record(r){records.push(r);throwCount++;updateInfo();updateGrid();}
+function undo(){if(records.length===0)return;records.pop();throwCount--;updateInfo();updateGrid();}
 
 function updateInfo(){
   info.innerText=`${distance}m / ${throwCount}投目`;
@@ -165,82 +126,34 @@ function updateInfo(){
   accuracy.innerText=`命中率 ${rate}%`;
 }
 
-function updateHistory(){
-  historyLog.innerHTML='';
-  records.forEach((r,i)=>{
-    const d=document.createElement('div');
-    d.innerText=`${i+1}投目：${r}`;
-    historyLog.appendChild(d);
-  });
-}
+// 保存演出
+function saveSession(){
+  const btn=document.getElementById('saveBtn');
+  btn.classList.add('save-anim');
+  btn.innerText='保存完了✔';
 
-function updateTotalTime(){
   const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const total=all.reduce((sum,s)=>sum+(s.duration||0),0);
-  totalTime.innerText=`${total.toFixed(2)} 時間`;
+  all.push({distance,records});
+  localStorage.setItem('sessions',JSON.stringify(all));
+
+  setTimeout(()=>{
+    btn.classList.remove('save-anim');
+    btn.innerText='保存';
+  },1000);
 }
 
-function loadDistanceOptions(){
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const distances=[...new Set(all.map(s=>s.distance))];
-  distanceFilter.innerHTML='';
-  distances.forEach(d=>{
-    const opt=document.createElement('option');
-    opt.value=d; opt.text=d+'m';
-    distanceFilter.appendChild(opt);
-  });
-  updateAnalysis();
-}
-
-function updateAnalysis(){
-  const selected=distanceFilter.value;
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const filtered=all.filter(s=>s.distance==selected);
-
-  const counts={}; directions.forEach(d=>counts[d]=0);
-  let total=0;
-
-  filtered.forEach(s=>{
-    s.records.forEach(r=>{counts[r]++;total++;});
-  });
-
-  analysisHeatmap.innerHTML='';
-
-  directions.forEach(d=>{
-    const div=document.createElement('div');
-    const c=counts[d];
-    const ratio=total?c/total:0;
-
-    div.className='cell';
-    div.style.background=`rgba(255,0,0,${ratio})`;
-    if(d==='○') div.style.background=`rgba(0,200,0,${ratio})`;
-
-    div.innerText=`${d}\n${c}回\n${Math.round(ratio*100)}%`;
-    analysisHeatmap.appendChild(div);
+// 画像保存
+function downloadImage(){
+  html2canvas(document.body).then(canvas=>{
+    const link=document.createElement('a');
+    link.download='result.png';
+    link.href=canvas.toDataURL();
+    link.click();
   });
 }
 
-function drawChart(){
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const labels=all.map((_,i)=>i+1);
-  const data=all.map(s=>{
-    const hit=s.records.filter(r=>r==='○').length;
-    return Math.round(hit/s.records.length*100);
-  });
-
-  new Chart(chart,{type:'line',data:{labels,datasets:[{data}]}});
-}
-
-function resetKeepHistory(){records=[];throwCount=1;showSetup();}
-
-showMenu();
+showSetup();
 </script>
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
-    .then(() => console.log('SW登録成功'))
-    .catch(err => console.log('SW登録失敗', err));
-}
-</script>
+
 </body>
 </html>

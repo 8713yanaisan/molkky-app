@@ -26,23 +26,21 @@ header { background:#222; color:white; padding:8px; font-size:16px; }
 
 #grid { display:grid; grid-template-columns:repeat(3,90px); gap:10px; justify-content:center; }
 
-button {
-  height:90px;
-  border-radius:12px;
-  border:none;
-}
-
+button { height:90px; border-radius:12px; border:none; }
 .center { transform:scale(1.2); border:3px solid #000; }
+.hidden { display:none; }
 
 .save-anim { background:#4CAF50 !important; color:white; }
 
-.hidden { display:none; }
+#analysisHeatmap { display:grid; grid-template-columns:repeat(3,60px); gap:6px; justify-content:center; }
+.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:12px; white-space:pre-line; }
 </style>
 </head>
 <body>
 
 <header>モルック練習</header>
 
+<!-- メニュー -->
 <div id="menu" class="container">
   <h3>メニュー</h3>
   <div class="menu-grid">
@@ -51,30 +49,57 @@ button {
   </div>
 </div>
 
+<!-- セットアップ -->
 <div id="setup" class="container hidden">
   <h3>距離選択</h3>
   <select id="distance"></select>
   <br><br>
   <button onclick="start()">スタート</button>
+  <br><br>
+  <button onclick="showMenu()">←戻る</button>
 </div>
 
+<!-- ゲーム -->
 <div id="game" class="container hidden">
   <h3 id="info"></h3>
   <div id="grid"></div>
   <p id="accuracy"></p>
+
   <button onclick="undo()">↩ 戻る</button>
   <br><br>
+
   <button id="saveBtn" onclick="saveSession()">保存</button>
   <button onclick="downloadImage()">画像保存</button>
+  <br><br>
+
+  <button onclick="showMenu()">メニューへ</button>
+</div>
+
+<!-- 分析 -->
+<div id="analysis" class="container hidden">
+  <h3>分析</h3>
+
+  <h4>距離選択</h4>
+  <select id="distanceFilter" onchange="updateAnalysis()"></select>
+
+  <h4>ヒートマップ</h4>
+  <div id="analysisHeatmap"></div>
+
+  <h4>命中率推移</h4>
+  <canvas id="chart"></canvas>
+
+  <br>
+  <button onclick="showMenu()">←戻る</button>
 </div>
 
 <script>
 let distance=0, throwCount=1, records=[];
 const directions=['↖','↑','↗','←','○','→','↙','↓','↘'];
 
-function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');}
+function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');analysis.classList.add('hidden');}
+function showMenu(){hideAll();menu.classList.remove('hidden');}
 function showSetup(){hideAll();setup.classList.remove('hidden');initDistance();}
-function showAnalysis(){alert('分析は省略');}
+function showAnalysis(){hideAll();analysis.classList.remove('hidden');loadDistanceOptions();drawChart();}
 
 // 距離プルダウン
 function initDistance(){
@@ -90,6 +115,7 @@ function initDistance(){
 
 function start(){
   distance=document.getElementById('distance').value;
+  records=[]; throwCount=1;
   hideAll(); game.classList.remove('hidden');
   updateGrid(); updateInfo();
 }
@@ -126,7 +152,7 @@ function updateInfo(){
   accuracy.innerText=`命中率 ${rate}%`;
 }
 
-// 保存演出
+// 保存
 function saveSession(){
   const btn=document.getElementById('saveBtn');
   btn.classList.add('save-anim');
@@ -142,9 +168,61 @@ function saveSession(){
   },1000);
 }
 
+// 分析
+function loadDistanceOptions(){
+  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
+  const distances=[...new Set(all.map(s=>s.distance))];
+  distanceFilter.innerHTML='';
+  distances.forEach(d=>{
+    const opt=document.createElement('option');
+    opt.value=d; opt.text=d+'m';
+    distanceFilter.appendChild(opt);
+  });
+  updateAnalysis();
+}
+
+function updateAnalysis(){
+  const selected=distanceFilter.value;
+  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
+  const filtered=all.filter(s=>s.distance==selected);
+
+  const counts={}; directions.forEach(d=>counts[d]=0);
+  let total=0;
+
+  filtered.forEach(s=>{
+    s.records.forEach(r=>{counts[r]++;total++;});
+  });
+
+  analysisHeatmap.innerHTML='';
+
+  directions.forEach(d=>{
+    const div=document.createElement('div');
+    const c=counts[d];
+    const ratio=total?c/total:0;
+
+    div.className='cell';
+    div.style.background=`rgba(255,0,0,${ratio})`;
+    if(d==='○') div.style.background=`rgba(0,200,0,${ratio})`;
+
+    div.innerText=`${d}\n${c}回\n${Math.round(ratio*100)}%`;
+    analysisHeatmap.appendChild(div);
+  });
+}
+
+function drawChart(){
+  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
+  const labels=all.map((_,i)=>i+1);
+  const data=all.map(s=>{
+    const hit=s.records.filter(r=>r==='○').length;
+    return Math.round(hit/s.records.length*100);
+  });
+
+  new Chart(chart,{type:'line',data:{labels,datasets:[{data}]}});
+}
+
 // 画像保存
 function downloadImage(){
-  html2canvas(document.body).then(canvas=>{
+  html2canvas(document.getElementById('game')).then(canvas=>{
     const link=document.createElement('a');
     link.download='result.png';
     link.href=canvas.toDataURL();
@@ -152,7 +230,7 @@ function downloadImage(){
   });
 }
 
-showSetup();
+showMenu();
 </script>
 
 </body>

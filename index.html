@@ -4,23 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>モルック練習記録</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family: sans-serif; text-align: center; margin:0; }
 header { background:#222; color:white; padding:8px; }
 .container { padding:10px; }
 
 .menu-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; max-width:300px; margin:auto; }
-.menu-btn { aspect-ratio:1/1; border-radius:20px; border:none; }
+.menu-btn { aspect-ratio:1/1; border-radius:20px; border:2px solid #333; }
 
-#grid { display:grid; grid-template-columns:repeat(3,80px); gap:10px; justify-content:center; margin:auto; }
-button { border-radius:12px; border:none; }
-.center { transform:scale(1.2); border:3px solid #000; }
+#grid { display:grid; grid-template-columns:repeat(3,80px); gap:10px; justify-content:center; }
+button { border-radius:12px; border:2px solid #333; padding:10px; }
 .hidden { display:none; }
 
-#history { text-align:left; max-width:250px; margin:10px auto; }
+.analysisHeatmap { display:grid; grid-template-columns:repeat(3,60px); gap:6px; justify-content:center; }
+.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid #333; font-size:12px; white-space:pre-line; }
 
-.score-grid { display:grid; grid-template-columns:repeat(4,60px); gap:8px; justify-content:center; }
+#scoreGrid { display:grid; grid-template-columns:repeat(4,60px); gap:8px; justify-content:center; }
 </style>
 </head>
 <body>
@@ -43,9 +42,8 @@ button { border-radius:12px; border:none; }
 <div id="game" class="container hidden">
   <h3 id="info"></h3>
   <div id="grid"></div>
-  <p id="accuracy"></p>
-  <div id="history"></div>
   <button onclick="undo()">戻る</button>
+  <button onclick="saveSession()">保存</button>
   <button onclick="showMenu()">メニュー</button>
 </div>
 
@@ -54,94 +52,199 @@ button { border-radius:12px; border:none; }
   <input type="date" id="fromDate">〜
   <input type="date" id="toDate">
   <button onclick="updateAnalysis()">絞込</button>
-  <div id="analysisHeatmap"></div>
+
+  <h4>距離別ヒット率</h4>
+  <div id="distanceStats"></div>
+
+  <h4>距離別ヒートマップ</h4>
+  <div id="distanceHeatmaps"></div>
+
+  <h4>ブレイク分析</h4>
+  <div id="breakAnalysis"></div>
+
   <button onclick="showMenu()">戻る</button>
 </div>
 
 <div id="break" class="container hidden">
   <h3>ブレイク練習</h3>
-  <div class="score-grid" id="scoreGrid"></div>
+  <div id="scoreGrid"></div>
   <p id="avg"></p>
-  <canvas id="breakChart"></canvas>
+  <div id="breakHistory"></div>
+  <button onclick="saveBreak()">保存</button>
   <button onclick="showMenu()">戻る</button>
 </div>
 
 <script>
 let records=[];
+let breakRecords=[];
+let currentDistance=0;
 const directions=['↖','↑','↗','←','○','→','↙','↓','↘'];
 
-function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');analysis.classList.add('hidden');breakDiv.classList.add('hidden');}
-function showMenu(){hideAll();menu.classList.remove('hidden');}
-function showSetup(){hideAll();setup.classList.remove('hidden');initDistance();}
-function showAnalysis(){hideAll();analysis.classList.remove('hidden');}
-function showBreak(){hideAll();breakDiv.classList.remove('hidden');initBreak();}
+function hideAll(){['menu','setup','game','analysis','break'].forEach(id=>document.getElementById(id).classList.add('hidden'));}
+function showMenu(){ hideAll(); document.getElementById('menu').classList.remove('hidden'); }
+function showSetup(){ hideAll(); document.getElementById('setup').classList.remove('hidden'); initDistance(); }
+function showAnalysis(){ hideAll(); document.getElementById('analysis').classList.remove('hidden'); initDate(); updateAnalysis(); }
+function showBreak(){ hideAll(); document.getElementById('break').classList.remove('hidden'); initBreak(); }
 
 function initDistance(){
-  distance.innerHTML='';
+  const sel=document.getElementById('distance');
+  sel.innerHTML='';
   for(let d=3.5; d<=12; d+=0.5){
-    const o=document.createElement('option'); o.value=d; o.text=d+'m'; distance.appendChild(o);
+    const o=document.createElement('option'); o.value=d; o.text=d+'m'; sel.appendChild(o);
   }
 }
 
-function start(){records=[];hideAll();game.classList.remove('hidden');update();}
+function initDate(){
+  const today=new Date();
+  const past=new Date();
+  past.setDate(today.getDate()-100);
+  fromDate.value=past.toISOString().split('T')[0];
+  toDate.value=today.toISOString().split('T')[0];
+}
+
+function start(){
+  records=[];
+  currentDistance=document.getElementById('distance').value;
+  hideAll(); document.getElementById('game').classList.remove('hidden');
+  update();
+}
 
 function update(){
+  const grid=document.getElementById('grid');
   grid.innerHTML='';
+
   const counts={}; directions.forEach(d=>counts[d]=0);
   records.forEach(r=>counts[r]++);
+  const total=records.length;
 
   directions.forEach(d=>{
     const b=document.createElement('button');
-    b.innerText=d;
-    b.onclick=()=>{records.push(d);update();};
+    const c=counts[d];
+    const ratio=total?c/total:0;
+
+    b.style.background = d==='○'
+      ? `rgba(0,200,0,${ratio})`
+      : `rgba(255,0,0,${ratio})`;
+
+    b.innerText = `${d}\n${c}`;
+
+    b.onclick=()=>{records.push(d); update();};
     grid.appendChild(b);
   });
 
-  info.innerText=`${records.length+1}投目`;
-
-  history.innerHTML='';
-  records.forEach((r,i)=>{
-    const div=document.createElement('div');
-    div.innerText=`${i+1}投目：${r}`;
-    history.appendChild(div);
-  });
+  document.getElementById('info').innerText=`${currentDistance}m / ${records.length+1}投目`;
 }
 
-function undo(){records.pop();update();}
+function undo(){ records.pop(); update(); }
 
-// 分析（簡易）
+function saveSession(){
+  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
+  all.push({date:new Date().toISOString(),distance:currentDistance,records});
+  localStorage.setItem('sessions',JSON.stringify(all));
+  alert('保存');
+}
+
 function updateAnalysis(){
   const from=new Date(fromDate.value);
   const to=new Date(toDate.value);
+
   const all=JSON.parse(localStorage.getItem('sessions')||'[]');
   const filtered=all.filter(s=>{
     const d=new Date(s.date);
     return d>=from && d<=to;
   });
 
-  analysisHeatmap.innerHTML=`件数:${filtered.length}`;
+  const byDistance={};
+  filtered.forEach(s=>{
+    if(!byDistance[s.distance]) byDistance[s.distance]=[];
+    byDistance[s.distance].push(...s.records);
+  });
+
+  const stats=document.getElementById('distanceStats');
+  const maps=document.getElementById('distanceHeatmaps');
+  stats.innerHTML=''; maps.innerHTML='';
+
+  Object.keys(byDistance).sort((a,b)=>a-b).forEach(dist=>{
+    const recs=byDistance[dist];
+    const hit=recs.filter(r=>r==='○').length;
+    const rate=Math.round(hit/recs.length*100);
+
+    const s=document.createElement('div');
+    s.innerText=`${dist}m：命中率 ${rate}%`;
+    stats.appendChild(s);
+
+    const counts={}; directions.forEach(d=>counts[d]=0);
+    recs.forEach(r=>counts[r]++);
+
+    const map=document.createElement('div');
+    map.innerHTML=`<div>${dist}m</div>`;
+
+    const g=document.createElement('div');
+    g.className='analysisHeatmap';
+
+    directions.forEach(d=>{
+      const c=counts[d];
+      const ratio=recs.length?c/recs.length:0;
+      const cell=document.createElement('div');
+      cell.className='cell';
+      cell.style.background=d==='○'
+        ? `rgba(0,200,0,${ratio})`
+        : `rgba(255,0,0,${ratio})`;
+      cell.innerText=`${d}\n${c}\n${Math.round(ratio*100)}%`;
+      g.appendChild(cell);
+    });
+
+    map.appendChild(g);
+    maps.appendChild(map);
+  });
+
+  // ブレイク分析
+  const breaks=JSON.parse(localStorage.getItem('breaks')||'[]');
+  const breakDiv=document.getElementById('breakAnalysis');
+  breakDiv.innerHTML='';
+
+  if(breaks.length===0){
+    breakDiv.innerText='データなし';
+    return;
+  }
+
+  let allScores=[];
+  breaks.forEach(b=> allScores.push(...b.scores));
+
+  const avg=allScores.reduce((a,b)=>a+b,0)/allScores.length;
+  breakDiv.innerText=`平均スコア：${avg.toFixed(2)}（全${allScores.length}投）`;
 }
 
-// ブレイク
-let scores=[];
 function initBreak(){
-  scoreGrid.innerHTML='';
+  const grid=document.getElementById('scoreGrid');
+  grid.innerHTML=''; breakRecords=[];
+
   for(let i=0;i<=12;i++){
     const b=document.createElement('button');
     b.innerText=i;
-    b.onclick=()=>{scores.push(i);updateBreak();};
-    scoreGrid.appendChild(b);
+    b.onclick=()=>{breakRecords.push(i); updateBreak();};
+    grid.appendChild(b);
   }
 }
 
 function updateBreak(){
-  const avgScore=scores.reduce((a,b)=>a+b,0)/scores.length;
-  avg.innerText=`平均:${avgScore.toFixed(2)}`;
+  const avgVal=breakRecords.reduce((a,b)=>a+b,0)/breakRecords.length;
+  document.getElementById('avg').innerText=`平均:${avgVal.toFixed(2)}`;
 
-  new Chart(breakChart,{
-    type:'line',
-    data:{labels:scores.map((_,i)=>i+1),datasets:[{data:scores}]}
+  const history=document.getElementById('breakHistory');
+  history.innerHTML='';
+  breakRecords.forEach((s,i)=>{
+    const div=document.createElement('div');
+    div.innerText=`${i+1}投目：${s}`;
+    history.appendChild(div);
   });
+}
+
+function saveBreak(){
+  const all=JSON.parse(localStorage.getItem('breaks')||'[]');
+  all.push({date:new Date().toISOString(),scores:breakRecords});
+  localStorage.setItem('breaks',JSON.stringify(all));
+  alert('保存');
 }
 
 showMenu();

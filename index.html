@@ -5,259 +5,146 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>モルック練習記録</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas"></script>
 <style>
 body { font-family: sans-serif; text-align: center; margin:0; }
-header { background:#222; color:white; padding:8px; font-size:16px; }
+header { background:#222; color:white; padding:8px; }
 .container { padding:10px; }
 
-.menu-grid {
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:15px;
-}
+.menu-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; max-width:300px; margin:auto; }
+.menu-btn { aspect-ratio:1/1; border-radius:20px; border:none; }
 
-.menu-btn {
-  aspect-ratio:1/1;
-  border-radius:20px;
-  border:none;
-  font-size:16px;
-}
-
-#grid { display:grid; grid-template-columns:repeat(3,90px); gap:10px; justify-content:center; }
-
-button { height:90px; border-radius:12px; border:none; }
+#grid { display:grid; grid-template-columns:repeat(3,80px); gap:10px; justify-content:center; margin:auto; }
+button { border-radius:12px; border:none; }
 .center { transform:scale(1.2); border:3px solid #000; }
 .hidden { display:none; }
 
-.save-anim { background:#4CAF50 !important; color:white; }
+#history { text-align:left; max-width:250px; margin:10px auto; }
 
-#analysisHeatmap { display:grid; grid-template-columns:repeat(3,60px); gap:6px; justify-content:center; }
-.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:12px; white-space:pre-line; }
+.score-grid { display:grid; grid-template-columns:repeat(4,60px); gap:8px; justify-content:center; }
 </style>
 </head>
 <body>
-
 <header>モルック練習</header>
 
-<!-- メニュー -->
 <div id="menu" class="container">
-  <h3>メニュー</h3>
   <div class="menu-grid">
-    <button class="menu-btn" onclick="showSetup()">練習開始</button>
+    <button class="menu-btn" onclick="showSetup()">練習</button>
     <button class="menu-btn" onclick="showAnalysis()">分析</button>
+    <button class="menu-btn" onclick="showBreak()">ブレイク</button>
   </div>
 </div>
 
-<!-- セットアップ -->
 <div id="setup" class="container hidden">
-  <h3>距離選択</h3>
-  <select id="distance"></select>
-  <br><br>
-  <button onclick="start()">スタート</button>
-  <br><br>
-  <button onclick="showMenu()">←戻る</button>
+  <select id="distance"></select><br><br>
+  <button onclick="start()">スタート</button><br><br>
+  <button onclick="showMenu()">戻る</button>
 </div>
 
-<!-- ゲーム -->
 <div id="game" class="container hidden">
   <h3 id="info"></h3>
   <div id="grid"></div>
   <p id="accuracy"></p>
-
-  <button onclick="undo()">↩ 戻る</button>
-  <br><br>
-
-  <button id="saveBtn" onclick="saveSession()">保存</button>
-  <button onclick="downloadImage()">画像保存</button>
-  <br><br>
-
-  <button onclick="showMenu()">メニューへ</button>
+  <div id="history"></div>
+  <button onclick="undo()">戻る</button>
+  <button onclick="showMenu()">メニュー</button>
 </div>
 
-<!-- 分析 -->
 <div id="analysis" class="container hidden">
   <h3>分析</h3>
-
-  <h4>距離選択</h4>
-  <select id="distanceFilter" onchange="updateAnalysis()"></select>
-
-  <h4>ヒートマップ</h4>
+  <input type="date" id="fromDate">〜
+  <input type="date" id="toDate">
+  <button onclick="updateAnalysis()">絞込</button>
   <div id="analysisHeatmap"></div>
+  <button onclick="showMenu()">戻る</button>
+</div>
 
-  <h4>命中率推移</h4>
-  <canvas id="chart"></canvas>
-
-  <br>
-  <button onclick="showMenu()">←戻る</button>
+<div id="break" class="container hidden">
+  <h3>ブレイク練習</h3>
+  <div class="score-grid" id="scoreGrid"></div>
+  <p id="avg"></p>
+  <canvas id="breakChart"></canvas>
+  <button onclick="showMenu()">戻る</button>
 </div>
 
 <script>
-let distance=0, throwCount=1, records=[];
+let records=[];
 const directions=['↖','↑','↗','←','○','→','↙','↓','↘'];
 
-function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');analysis.classList.add('hidden');}
+function hideAll(){menu.classList.add('hidden');setup.classList.add('hidden');game.classList.add('hidden');analysis.classList.add('hidden');breakDiv.classList.add('hidden');}
 function showMenu(){hideAll();menu.classList.remove('hidden');}
 function showSetup(){hideAll();setup.classList.remove('hidden');initDistance();}
-function showAnalysis(){hideAll();analysis.classList.remove('hidden');loadDistanceOptions();drawChart();}
+function showAnalysis(){hideAll();analysis.classList.remove('hidden');}
+function showBreak(){hideAll();breakDiv.classList.remove('hidden');initBreak();}
 
-// 距離プルダウン
 function initDistance(){
-  const sel=document.getElementById('distance');
-  sel.innerHTML='';
+  distance.innerHTML='';
   for(let d=3.5; d<=12; d+=0.5){
-    const opt=document.createElement('option');
-    opt.value=d.toFixed(1);
-    opt.text=d.toFixed(1)+' m';
-    sel.appendChild(opt);
+    const o=document.createElement('option'); o.value=d; o.text=d+'m'; distance.appendChild(o);
   }
 }
 
-function start(){
-  distance=document.getElementById('distance').value;
-  records=[]; throwCount=1;
-  hideAll(); game.classList.remove('hidden');
-  updateGrid(); updateInfo();
-}
+function start(){records=[];hideAll();game.classList.remove('hidden');update();}
 
-function updateGrid(){
+function update(){
+  grid.innerHTML='';
   const counts={}; directions.forEach(d=>counts[d]=0);
   records.forEach(r=>counts[r]++);
-  const total=records.length;
-
-  grid.innerHTML='';
 
   directions.forEach(d=>{
-    const btn=document.createElement('button');
-    const c=counts[d];
-    const ratio=total?c/total:0;
-
-    if(d==='○'){btn.style.background=`rgba(0,200,0,${ratio})`;btn.classList.add('center');}
-    else{btn.style.background=`rgba(255,0,0,${ratio})`;}
-
-    btn.innerText=`${d}\n${c}回\n${Math.round(ratio*100)}%`;
-    btn.onclick=()=>record(d);
-
-    grid.appendChild(btn);
-  });
-}
-
-function record(r){records.push(r);throwCount++;updateInfo();updateGrid();}
-function undo(){if(records.length===0)return;records.pop();throwCount--;updateInfo();updateGrid();}
-
-function updateInfo(){
-  info.innerText=`${distance}m / ${throwCount}投目`;
-  const hit=records.filter(r=>r==='○').length;
-  const rate=records.length?Math.round(hit/records.length*100):0;
-  accuracy.innerText=`命中率 ${rate}%`;
-}
-
-// 保存
-function saveSession(){
-  const btn=document.getElementById('saveBtn');
-  btn.classList.add('save-anim');
-  btn.innerText='保存完了✔';
-
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  all.push({distance,records});
-  localStorage.setItem('sessions',JSON.stringify(all));
-
-  setTimeout(()=>{
-    btn.classList.remove('save-anim');
-    btn.innerText='保存';
-  },1000);
-}
-
-// 分析
-function loadDistanceOptions(){
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const distances=[...new Set(all.map(s=>s.distance))];
-  distanceFilter.innerHTML='';
-  distances.forEach(d=>{
-    const opt=document.createElement('option');
-    opt.value=d; opt.text=d+'m';
-    distanceFilter.appendChild(opt);
-  });
-  updateAnalysis();
-}
-
-function updateAnalysis(){
-  const selected=distanceFilter.value;
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const filtered=all.filter(s=>s.distance==selected);
-
-  const counts={}; directions.forEach(d=>counts[d]=0);
-  let total=0;
-
-  filtered.forEach(s=>{
-    s.records.forEach(r=>{counts[r]++;total++;});
+    const b=document.createElement('button');
+    b.innerText=d;
+    b.onclick=()=>{records.push(d);update();};
+    grid.appendChild(b);
   });
 
-  analysisHeatmap.innerHTML='';
+  info.innerText=`${records.length+1}投目`;
 
-  directions.forEach(d=>{
+  history.innerHTML='';
+  records.forEach((r,i)=>{
     const div=document.createElement('div');
-    const c=counts[d];
-    const ratio=total?c/total:0;
-
-    div.className='cell';
-    div.style.background=`rgba(255,0,0,${ratio})`;
-    if(d==='○') div.style.background=`rgba(0,200,0,${ratio})`;
-
-    div.innerText=`${d}\n${c}回\n${Math.round(ratio*100)}%`;
-    analysisHeatmap.appendChild(div);
+    div.innerText=`${i+1}投目：${r}`;
+    history.appendChild(div);
   });
 }
 
-function drawChart(){
+function undo(){records.pop();update();}
+
+// 分析（簡易）
+function updateAnalysis(){
+  const from=new Date(fromDate.value);
+  const to=new Date(toDate.value);
   const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const labels=all.map((_,i)=>i+1);
-  const data=all.map(s=>{
-    const hit=s.records.filter(r=>r==='○').length;
-    return Math.round(hit/s.records.length*100);
+  const filtered=all.filter(s=>{
+    const d=new Date(s.date);
+    return d>=from && d<=to;
   });
 
-  new Chart(chart,{type:'line',data:{labels,datasets:[{data}]}});
+  analysisHeatmap.innerHTML=`件数:${filtered.length}`;
 }
 
-// 画像保存
-function downloadImage(){
-  html2canvas(document.getElementById('game')).then(canvas=>{
-    const link=document.createElement('a');
-    link.download='result.png';
-    link.href=canvas.toDataURL();
-    link.click();
+// ブレイク
+let scores=[];
+function initBreak(){
+  scoreGrid.innerHTML='';
+  for(let i=0;i<=12;i++){
+    const b=document.createElement('button');
+    b.innerText=i;
+    b.onclick=()=>{scores.push(i);updateBreak();};
+    scoreGrid.appendChild(b);
+  }
+}
+
+function updateBreak(){
+  const avgScore=scores.reduce((a,b)=>a+b,0)/scores.length;
+  avg.innerText=`平均:${avgScore.toFixed(2)}`;
+
+  new Chart(breakChart,{
+    type:'line',
+    data:{labels:scores.map((_,i)=>i+1),datasets:[{data:scores}]}
   });
 }
 
 showMenu();
 </script>
-
 </body>
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-
-    // 更新検知
-    reg.onupdatefound = () => {
-      const newWorker = reg.installing;
-
-      newWorker.onstatechange = () => {
-        if (newWorker.state === 'installed') {
-          if (navigator.serviceWorker.controller) {
-
-            // ★ここが更新通知
-            if (confirm('アプリが更新されました。再読み込みしますか？')) {
-              window.location.reload();
-            }
-
-          }
-        }
-      };
-    };
-
-  });
-}
-</script>
 </html>

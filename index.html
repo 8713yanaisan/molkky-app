@@ -6,20 +6,23 @@
 <title>モルック練習記録</title>
 <style>
 body { font-family: sans-serif; text-align: center; margin:0; }
-header { background:#222; color:white; padding:8px; }
-.container { padding:10px; }
+header { background:#222; color:white; padding:10px; font-size:18px; }
+.container { padding:12px; }
 
-.menu-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; max-width:300px; margin:auto; }
-.menu-btn { aspect-ratio:1/1; border-radius:20px; border:2px solid #333; }
+.menu-grid { display:grid; grid-template-columns:1fr 1fr; gap:15px; max-width:320px; margin:auto; }
+.menu-btn { aspect-ratio:1/1; border-radius:20px; border:2px solid #333; font-size:18px; font-weight:bold; }
 
-#grid { display:grid; grid-template-columns:repeat(3,80px); gap:10px; justify-content:center; }
-button { border-radius:12px; border:2px solid #333; padding:10px; }
-.hidden { display:none; }
+button { border-radius:12px; border:2px solid #333; padding:12px; font-size:16px; }
+.btn-row { display:flex; gap:10px; justify-content:center; margin-top:10px; }
+.btn-row button { flex:1; }
+
+#grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:300px; margin:10px auto; }
+#grid button { aspect-ratio:1/1; }
 
 .analysisHeatmap { display:grid; grid-template-columns:repeat(3,60px); gap:6px; justify-content:center; }
-.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid #333; font-size:12px; white-space:pre-line; }
+.cell { height:60px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid #333; font-size:11px; white-space:pre-line; }
 
-#scoreGrid { display:grid; grid-template-columns:repeat(4,60px); gap:8px; justify-content:center; }
+.hidden { display:none; }
 </style>
 </head>
 <body>
@@ -28,30 +31,54 @@ button { border-radius:12px; border:2px solid #333; padding:10px; }
 <div id="menu" class="container">
   <div class="menu-grid">
     <button class="menu-btn" onclick="showSetup()">練習</button>
-    <button class="menu-btn" onclick="showAnalysis()">分析</button>
     <button class="menu-btn" onclick="showBreak()">ブレイク</button>
+    <button class="menu-btn" onclick="startTraining()">開始</button>
+    <button class="menu-btn" onclick="endTraining()">終了</button>
+    <button class="menu-btn" onclick="showAnalysis()">分析</button>
+    <button class="menu-btn" onclick="exportData()">エクスポート</button>
   </div>
 </div>
 
 <div id="setup" class="container hidden">
-  <select id="distance"></select><br><br>
-  <button onclick="start()">スタート</button><br><br>
-  <button onclick="showMenu()">戻る</button>
+  <select id="distance" style="font-size:18px;padding:10px;"></select>
+  <div class="btn-row">
+    <button onclick="start()">スタート</button>
+    <button onclick="showMenu()">メニュー</button>
+  </div>
 </div>
 
 <div id="game" class="container hidden">
   <h3 id="info"></h3>
   <div id="grid"></div>
-  <button onclick="undo()">戻る</button>
-  <button onclick="saveSession()">保存</button>
-  <button onclick="showMenu()">メニュー</button>
+  <div id="log"></div>
+  <div class="btn-row">
+    <button onclick="undo()">戻る</button>
+    <button onclick="saveSession()">保存</button>
+    <button onclick="showMenu()">メニュー</button>
+  </div>
+</div>
+
+<div id="break" class="container hidden">
+  <h3>ブレイク</h3>
+  <div id="scoreGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:300px;margin:auto;"></div>
+  <p id="avg"></p>
+  <div id="breakLog"></div>
+  <div class="btn-row">
+    <button onclick="undoBreak()">戻る</button>
+    <button onclick="saveBreak()">保存</button>
+    <button onclick="showMenu()">メニュー</button>
+  </div>
 </div>
 
 <div id="analysis" class="container hidden">
   <h3>分析</h3>
+
   <input type="date" id="fromDate">〜
   <input type="date" id="toDate">
   <button onclick="updateAnalysis()">絞込</button>
+
+  <h4>練習時間</h4>
+  <div id="timeStats"></div>
 
   <h4>距離別ヒット率</h4>
   <div id="distanceStats"></div>
@@ -65,26 +92,41 @@ button { border-radius:12px; border:2px solid #333; padding:10px; }
   <button onclick="showMenu()">戻る</button>
 </div>
 
-<div id="break" class="container hidden">
-  <h3>ブレイク練習</h3>
-  <div id="scoreGrid"></div>
-  <p id="avg"></p>
-  <div id="breakHistory"></div>
-  <button onclick="saveBreak()">保存</button>
-  <button onclick="showMenu()">戻る</button>
-</div>
-
 <script>
 let records=[];
 let breakRecords=[];
 let currentDistance=0;
+let trainingStart=null;
+
 const directions=['↖','↑','↗','←','○','→','↙','↓','↘'];
 
-function hideAll(){['menu','setup','game','analysis','break'].forEach(id=>document.getElementById(id).classList.add('hidden'));}
+function hideAll(){['menu','setup','game','break','analysis'].forEach(id=>document.getElementById(id).classList.add('hidden'));}
 function showMenu(){ hideAll(); document.getElementById('menu').classList.remove('hidden'); }
 function showSetup(){ hideAll(); document.getElementById('setup').classList.remove('hidden'); initDistance(); }
-function showAnalysis(){ hideAll(); document.getElementById('analysis').classList.remove('hidden'); initDate(); updateAnalysis(); }
 function showBreak(){ hideAll(); document.getElementById('break').classList.remove('hidden'); initBreak(); }
+function showAnalysis(){ hideAll(); document.getElementById('analysis').classList.remove('hidden'); initDate(); updateAnalysis(); }
+
+function startTraining(){
+  trainingStart=new Date();
+  localStorage.setItem('trainingStart', trainingStart.toISOString());
+  alert('練習開始');
+}
+
+function endTraining(){
+  const startStr=localStorage.getItem('trainingStart');
+  if(!startStr){ alert('開始していません'); return; }
+
+  const start=new Date(startStr);
+  const end=new Date();
+  const diff=(end-start)/1000/60/60; // 時間
+
+  const logs=JSON.parse(localStorage.getItem('trainingLogs')||'[]');
+  logs.push({start:startStr,end:end.toISOString(),duration:diff});
+  localStorage.setItem('trainingLogs',JSON.stringify(logs));
+
+  localStorage.removeItem('trainingStart');
+  alert(`終了：${diff.toFixed(2)}時間`);
+}
 
 function initDistance(){
   const sel=document.getElementById('distance');
@@ -98,44 +140,41 @@ function initDate(){
   const today=new Date();
   const past=new Date();
   past.setDate(today.getDate()-100);
-  fromDate.value=past.toISOString().split('T')[0];
-  toDate.value=today.toISOString().split('T')[0];
+  document.getElementById('fromDate').value=past.toISOString().split('T')[0];
+  document.getElementById('toDate').value=today.toISOString().split('T')[0];
 }
 
-function start(){
-  records=[];
-  currentDistance=document.getElementById('distance').value;
-  hideAll(); document.getElementById('game').classList.remove('hidden');
-  update();
-}
+function start(){ records=[]; currentDistance=document.getElementById('distance').value; hideAll(); game.classList.remove('hidden'); update(); }
 
 function update(){
   const grid=document.getElementById('grid');
-  grid.innerHTML='';
+  const log=document.getElementById('log');
+  grid.innerHTML=''; log.innerHTML='';
 
   const counts={}; directions.forEach(d=>counts[d]=0);
   records.forEach(r=>counts[r]++);
   const total=records.length;
 
   directions.forEach(d=>{
-    const b=document.createElement('button');
     const c=counts[d];
     const ratio=total?c/total:0;
-
-    b.style.background = d==='○'
-      ? `rgba(0,200,0,${ratio})`
-      : `rgba(255,0,0,${ratio})`;
-
-    b.innerText = `${d}\n${c}`;
-
+    const b=document.createElement('button');
+    b.style.background=d==='○'?`rgba(0,200,0,${ratio})`:`rgba(255,0,0,${ratio})`;
+    b.innerText=`${d}\n${c}\n${Math.round(ratio*100)}%`;
     b.onclick=()=>{records.push(d); update();};
     grid.appendChild(b);
   });
 
-  document.getElementById('info').innerText=`${currentDistance}m / ${records.length+1}投目`;
+  info.innerText=`${currentDistance}m / ${records.length+1}投目`;
+
+  records.forEach((r,i)=>{
+    const div=document.createElement('div');
+    div.innerText=`${i+1}投目：${r}`;
+    log.appendChild(div);
+  });
 }
 
-function undo(){ records.pop(); update(); }
+function undo(){records.pop(); update();}
 
 function saveSession(){
   const all=JSON.parse(localStorage.getItem('sessions')||'[]');
@@ -144,12 +183,56 @@ function saveSession(){
   alert('保存');
 }
 
-function updateAnalysis(){
-  const from=new Date(fromDate.value);
-  const to=new Date(toDate.value);
+function initBreak(){
+  const grid=document.getElementById('scoreGrid');
+  const log=document.getElementById('breakLog');
+  grid.innerHTML=''; breakRecords=[]; log.innerHTML='';
+  for(let i=0;i<=12;i++){
+    const b=document.createElement('button');
+    b.innerText=i;
+    b.onclick=()=>{breakRecords.push(i); updateBreak();};
+    grid.appendChild(b);
+  }
+}
 
-  const all=JSON.parse(localStorage.getItem('sessions')||'[]');
-  const filtered=all.filter(s=>{
+function updateBreak(){
+  const avgVal=breakRecords.reduce((a,b)=>a+b,0)/breakRecords.length;
+  document.getElementById('avg').innerText=`平均:${avgVal.toFixed(2)}`;
+
+  const log=document.getElementById('breakLog');
+  log.innerHTML='';
+  breakRecords.forEach((s,i)=>{
+    const div=document.createElement('div');
+    div.innerText=`${i+1}投目：${s}`;
+    log.appendChild(div);
+  });
+}
+
+function undoBreak(){breakRecords.pop(); updateBreak();}
+
+function saveBreak(){
+  const all=JSON.parse(localStorage.getItem('breaks')||'[]');
+  all.push({date:new Date().toISOString(),scores:breakRecords});
+  localStorage.setItem('breaks',JSON.stringify(all));
+  alert('保存');
+}
+
+function updateAnalysis(){
+  const logs=JSON.parse(localStorage.getItem('trainingLogs')||'[]');
+  const timeDiv=document.getElementById('timeStats');
+
+  if(logs.length===0){ timeDiv.innerText='データなし'; }
+  else{
+    let total=0;
+    logs.forEach(l=> total+=l.duration);
+    timeDiv.innerText=`累積：${total.toFixed(2)}時間 / 回数：${logs.length}`;
+  }
+
+  const from=new Date(document.getElementById('fromDate').value);
+  const to=new Date(document.getElementById('toDate').value);
+
+  const sessions=JSON.parse(localStorage.getItem('sessions')||'[]');
+  const filtered=sessions.filter(s=>{
     const d=new Date(s.date);
     return d>=from && d<=to;
   });
@@ -176,9 +259,6 @@ function updateAnalysis(){
     const counts={}; directions.forEach(d=>counts[d]=0);
     recs.forEach(r=>counts[r]++);
 
-    const map=document.createElement('div');
-    map.innerHTML=`<div>${dist}m</div>`;
-
     const g=document.createElement('div');
     g.className='analysisHeatmap';
 
@@ -187,64 +267,40 @@ function updateAnalysis(){
       const ratio=recs.length?c/recs.length:0;
       const cell=document.createElement('div');
       cell.className='cell';
-      cell.style.background=d==='○'
-        ? `rgba(0,200,0,${ratio})`
-        : `rgba(255,0,0,${ratio})`;
+      cell.style.background=d==='○'?`rgba(0,200,0,${ratio})`:`rgba(255,0,0,${ratio})`;
       cell.innerText=`${d}\n${c}\n${Math.round(ratio*100)}%`;
       g.appendChild(cell);
     });
 
-    map.appendChild(g);
-    maps.appendChild(map);
+    maps.appendChild(g);
   });
 
-  // ブレイク分析
   const breaks=JSON.parse(localStorage.getItem('breaks')||'[]');
   const breakDiv=document.getElementById('breakAnalysis');
   breakDiv.innerHTML='';
 
-  if(breaks.length===0){
-    breakDiv.innerText='データなし';
-    return;
-  }
+  if(breaks.length===0){ breakDiv.innerText='データなし'; return; }
 
-  let allScores=[];
-  breaks.forEach(b=> allScores.push(...b.scores));
+  let scores=[];
+  breaks.forEach(b=>scores.push(...b.scores));
+  const avg=scores.reduce((a,b)=>a+b,0)/scores.length;
 
-  const avg=allScores.reduce((a,b)=>a+b,0)/allScores.length;
-  breakDiv.innerText=`平均スコア：${avg.toFixed(2)}（全${allScores.length}投）`;
+  breakDiv.innerText=`平均スコア：${avg.toFixed(2)}（${scores.length}投）`;
 }
 
-function initBreak(){
-  const grid=document.getElementById('scoreGrid');
-  grid.innerHTML=''; breakRecords=[];
+function exportData(){
+  const data={
+    sessions: JSON.parse(localStorage.getItem('sessions')||'[]'),
+    breaks: JSON.parse(localStorage.getItem('breaks')||'[]'),
+    trainingLogs: JSON.parse(localStorage.getItem('trainingLogs')||'[]')
+  };
 
-  for(let i=0;i<=12;i++){
-    const b=document.createElement('button');
-    b.innerText=i;
-    b.onclick=()=>{breakRecords.push(i); updateBreak();};
-    grid.appendChild(b);
-  }
-}
-
-function updateBreak(){
-  const avgVal=breakRecords.reduce((a,b)=>a+b,0)/breakRecords.length;
-  document.getElementById('avg').innerText=`平均:${avgVal.toFixed(2)}`;
-
-  const history=document.getElementById('breakHistory');
-  history.innerHTML='';
-  breakRecords.forEach((s,i)=>{
-    const div=document.createElement('div');
-    div.innerText=`${i+1}投目：${s}`;
-    history.appendChild(div);
-  });
-}
-
-function saveBreak(){
-  const all=JSON.parse(localStorage.getItem('breaks')||'[]');
-  all.push({date:new Date().toISOString(),scores:breakRecords});
-  localStorage.setItem('breaks',JSON.stringify(all));
-  alert('保存');
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='molkky_data.json';
+  a.click();
 }
 
 showMenu();

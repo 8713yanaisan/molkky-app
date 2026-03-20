@@ -234,4 +234,30 @@ showMenu();
 </script>
 
 </body>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+
+    // 更新検知
+    reg.onupdatefound = () => {
+      const newWorker = reg.installing;
+
+      newWorker.onstatechange = () => {
+        if (newWorker.state === 'installed') {
+          if (navigator.serviceWorker.controller) {
+
+            // ★ここが更新通知
+            if (confirm('アプリが更新されました。再読み込みしますか？')) {
+              window.location.reload();
+            }
+
+          }
+        }
+      };
+    };
+
+  });
+}
+</script>
 </html>
